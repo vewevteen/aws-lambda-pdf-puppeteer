@@ -1,33 +1,30 @@
-service: pdf
+service: pdf-generator
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-northeast-2
+  profile: default
+  timeout: 30
+  memorySize: 512
+  stage: development
+  environment:
+    NODE_ENV: development
+
+functions:
+  generatePdf:
+    handler: src/pdf.pdf
+    events:
+      - http:
+          path: v1/generate-pdf
+          method: post
+          cors: true
 
 plugins:
   - serverless-offline
   - serverless-apigw-binary
 
-provider:
-  name: aws
-  runtime: nodejs12.x
-  region: eu-central-1
-  stage: ${opt:stage, 'development'}
-  environment:
-    ENV: ${self:provider.stage}
-  apiGateway:
-    shouldStartNameWithService: true
-
 custom:
   apigwBinary:
     types:
-      - '*/*'
-
-functions:
-  pdf:
-    handler: pdf.pdf
-    events:
-      - http:
-          path: pdf/{yearMonth}
-          method: get
-          cors: true
-          request:
-            parameters:
-              paths:
-                yearMonth: true
+      - "*/*"

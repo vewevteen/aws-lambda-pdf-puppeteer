@@ -1,69 +1,63 @@
-'use strict'
-const chromium = require('chrome-aws-lambda')
-const pug = require('pug')
-const fs = require('fs')
-const path = require('path')
-
-const knex = require('./src/db')
+"use strict";
+const chromium = require("@sparticuz/chromium");
+const puppeteer = require("puppeteer-core");
 
 module.exports.pdf = async (event, context) => {
-  const yearMonth = ((event || {}).pathParameters || {}).yearMonth || ''
-  const year = yearMonth.length == 7 && yearMonth.substring(0, 4)
-  const month = yearMonth.length == 7 && yearMonth.substring(5, 6)
+  let html = "";
 
-  // Select a date
-  const selDate = new Date(year, month)
-  const filter = {
-    month: selDate.toLocaleString('en', { month: 'long' }),
-    year: selDate.getFullYear(),
+  // ✅ event.isBase64Encoded 체크
+  if (event.body) {
+    if (event.isBase64Encoded) {
+      html = Buffer.from(event.body, "base64").toString("utf-8");
+    } else {
+      html = event.body;
+    }
+  } else {
+    console.error("No body found");
+    return context.fail("No body found");
   }
 
-  // Fetch data with knex
-  const result = await knex
-    .select()
-    .from('sales')
-    .where({
-      year: filter.year,
-      month: selDate.getMonth() + 1,
-    })
+  // ✅ termName 파라미터 받기 (queryStringParameters 기준)
+  const termName =
+    (event.queryStringParameters && event.queryStringParameters.termName) ||
+    "document";
 
-  const template = pug.compileFile('./src/template.pug')
-  const html = template({ ...filter, result })
-
-  let browser = null
+  let browser = null;
   try {
-    browser = await chromium.puppeteer.launch({
+    browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath,
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless,
-    })
+    });
 
-    const page = await browser.newPage()
-    page.setContent(html)
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
     const pdf = await page.pdf({
-      format: 'A4',
+      format: "A4",
       printBackground: true,
-      displayHeaderFooter: true,
-      margin: { top: '1.8cm', right: '1cm', bottom: '1cm', left: '1cm' },
-    })
+      displayHeaderFooter: false,
+      margin: { top: "1.8cm", right: "1cm", bottom: "1cm", left: "1cm" },
+    });
 
-    // TODO: Response with PDF (or error if something went wrong )
     const response = {
       headers: {
-        'Content-type': 'application/pdf',
-        'content-disposition': 'attachment; filename=test.pdf',
+        "Content-type": "application/pdf",
+        "content-disposition": `attachment; filename=${termName}.pdf`,
       },
       statusCode: 200,
-      body: pdf.toString('base64'),
+      body: pdf.toString("base64"),
       isBase64Encoded: true,
-    }
-    context.succeed(response)
+    };
+
+    context.succeed(response);
   } catch (error) {
-    return context.fail(error)
+    console.error("Error generating PDF:", error);
+    return context.fail(error);
   } finally {
     if (browser !== null) {
-      await browser.close()
+      await browser.close();
     }
   }
-}
+};
